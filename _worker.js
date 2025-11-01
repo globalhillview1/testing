@@ -1,4 +1,5 @@
 // Cloudflare Pages Worker — API proxy for Google Apps Script (GAS)
+// Updated GAS URL from user's last message:
 const GAS_API = 'https://script.google.com/macros/s/AKfycbxUzk4Q8V5e_GuMcHJ27AUMPX6QC2aIHvy8Q1fmkNjX6Cc8Rkr2gFC4lh4ZpW_W81uMZg/exec';
 
 /** Helper to set CORS headers **/
@@ -38,18 +39,25 @@ export default {
       }
       // Note: We intentionally exclude Host, Content-Length, and all other non-essential headers.
 
-      // 2. Create a new Request object for the upstream call to reliably pass the body stream
+      // 2. Determine the request body for POST/PUT/PATCH
+      let requestBody = undefined;
+      if (request.method !== 'GET' && request.method !== 'HEAD' && request.body) {
+          // Use request.clone() to safely consume the stream if needed by Cloudflare's runtime
+          requestBody = request.clone().body; 
+      }
+
+      // 3. Create a new Request object for the upstream call
       const proxyRequest = new Request(upstream.toString(), {
           method: request.method,
           headers: headers, // Use the clean header set
           redirect: 'follow', // Follow any 302 redirects internally
-          body: request.body, // Pass the request body stream directly
+          body: requestBody, // Pass the request body stream
       });
 
       try {
         const res = await fetch(proxyRequest);
         
-        // 3. Pass the response back to the client, adding CORS headers
+        // 4. Pass the response back to the client, adding CORS headers
         return new Response(res.body, { 
             status: res.status, 
             statusText: res.statusText, 
