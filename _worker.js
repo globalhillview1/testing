@@ -1,5 +1,5 @@
 // Cloudflare Pages Worker — API proxy for Google Apps Script (GAS)
-const GAS_API = 'https://script.google.com/macros/s/AKfycbzxi94OUhTg1k2kQCV4DbtvsGVDEn4txrNDlNCqFq6u6uPxeMLIMWql5U9blc7RNJ2f4A/exec';
+const GAS_API = 'https://script.google.com/macros/s/AKfycbxUzk4Q8V5e_GuMcHJ27AUMPX6QC2aIHvy8Q1fmkNjX6Cc8Rkr2gFC4lh4ZpW_W81uMZg/exec';
 
 /** Helper to set CORS headers **/
 function corsHeaders(h = new Headers()) {
