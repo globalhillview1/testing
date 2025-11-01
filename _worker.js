@@ -1,4 +1,4 @@
-// Cloudflare Pages Worker — API proxy only (no path rewrites that can loop)
+// Cloudflare Pages Worker — API proxy for Google Apps Script (GAS)
 const GAS_API = 'https://script.google.com/macros/s/AKfycbzxi94OUhTg1k2kQCV4DbtvsGVDEn4txrNDlNCqFq6u6uPxeMLIMWql5U9blc7RNJ2f4A/exec';
 
 /** Helper to set CORS headers **/
@@ -6,6 +6,7 @@ function corsHeaders(h = new Headers()) {
   h.set('Access-Control-Allow-Origin', '*');
   h.set('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
   h.set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  // Pass existing headers to ensure the browser sees the correct response headers
   return h;
 }
 
@@ -13,10 +14,11 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // Proxy /api to GAS, preserving method, query, and body
+    // Proxy /api to GAS
     if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
         
       // 0. Handle CORS Preflight (OPTIONS request)
+      // Browsers send this before a cross-origin POST request.
       if (request.method === 'OPTIONS') {
         return new Response(null, { status: 204, headers: corsHeaders() });
       }
@@ -28,21 +30,18 @@ export default {
 
       const headers = new Headers(request.headers);
       
-      // 2. CRITICAL: Remove Content-Length and Host headers for proxying
-      // Content-Length can cause body stream issues. Host must be the original GAS host.
+      // 2. CRITICAL: Remove headers that can break the proxy request
       if (headers.has('Content-Length')) {
           headers.delete('Content-Length');
       }
       headers.delete('Host'); // Ensure the Host header is correct for GAS
 
-      // 3. Create a new Request object for the upstream call. 
+      // 3. Create a new Request object for the upstream call to reliably pass the body stream
       const proxyRequest = new Request(upstream.toString(), {
           method: request.method,
           headers: headers,
-          redirect: 'manual',
+          redirect: 'manual', // Do not follow redirects (GAS sends 302 on success sometimes)
           body: request.body, // Pass the request body stream directly
-          // Disable keepalive for Cloudflare Pages (best practice)
-          cf: { cacheTtlByStatus: { '200-299': -1, '400-599': 0 } }
       });
 
       try {
