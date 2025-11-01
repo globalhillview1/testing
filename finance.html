@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Finance – P/L, Balance Sheet, COA & Opening Balances</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+:root{
+  --bg:#f7f9fc; --card:#fff; --text:#0f172a; --muted:#64748b; --border:#e5e7eb; --blue:#0d6efd; --danger:#ef4444;
+  --radius:14px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial}
+
+header{position:sticky;top:0;z-index:20;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;background:#fff;border-bottom:1px solid var(--border)}
+h1{margin:0;font-size:18px;font-weight:800}
+
+.wrap{padding:16px}
+.card{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input,select,textarea{border:1px solid var(--border);border-radius:8px;padding:8px}
+.btn{border:1px solid var(--border);background:#fff;padding:8px 12px;border-radius:10px;cursor:pointer}
+.btn:hover{background:#f1f5f9}
+.btn.primary{background:var(--blue);color:#fff;border-color:transparent}
+.btn.danger{background:var(--danger);color:#fff;border-color:transparent}
+.badge{display:inline-block;padding:2px 6px;border-radius:6px;background:#f8fafc;border:1px solid #e5e7eb;color:#334155;font-size:12px}
+.muted{color:var(--muted)}
+.right{text-align:right}
+.hidden{display:none}
+
+/* split layout */
+.split{display:grid;grid-template-columns:1fr 8px 1fr;gap:0}
+.split>.card{margin:0}
+.split .gutter{cursor:col-resize;background:linear-gradient(90deg,#0000,#e5e7eb,#0000)}
+.split .gutter:active{background:linear-gradient(90deg,#0000,#cbd5e1,#0000)}
+
+/* table wrappers with sticky headers */
+.tableWrap{overflow:auto;border:1px solid var(--border);border-radius:12px}
+.tableWrap.maxh{max-height:340px}
+table{width:100%;border-collapse:separate;border-spacing:0}
+thead th{position:sticky;top:0;background:#fff;border-bottom:1px solid var(--border);padding:10px;text-align:left;z-index:5}
+tbody td{border-top:1px solid var(--border);padding:10px;vertical-align:top}
+
+/* hide actions column for non-admins */
+th.actions, td.actions { }
+body.no-admin th.actions, body.no-admin td.actions { display:none; }
+
+/* drawers (not loaded by default) */
+.drawer{display:none;border:1px solid var(--border);border-radius:var(--radius);padding:14px;background:#fff}
+.drawer.open{display:block;animation:fade .12s ease}
+@keyframes fade{from{opacity:.6;transform:translateY(-2px)}to{opacity:1;transform:none}}
+.drawer h3{margin:0 0 6px}
+
+/* small utilities */
+.w100{width:100%}
+</style>
+</head>
+<body>
+<header>
+  <h1>Finance</h1>
+  <div class="row">
+    <button class="btn" onclick="location.href='/'">Back</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="card">
+    <div class="row">
+      <label>From <input id="from" type="date"></label>
+      <label>To <input id="to" type="date"></label>
+      <label>As of <input id="asof" type="date"></label>
+      <button id="run" class="btn primary">Run</button>
+      <span id="status" class="muted"></span>
+      <span class="muted" style="margin-left:auto">Timezone: IST • Dates: DD-MM-YYYY</span>
+    </div>
+  </div>
+
+  <!-- Split: P&L | BS with draggable gutter -->
+  <div class="split card" style="padding:0">
+    <div class="card" style="border:0;border-right:1px solid var(--border);border-radius:14px 0 0 14px">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px">
+        <h3 style="margin:0">Profit & Loss</h3>
+        <button id="openCoa" class="btn hidden">Manage COA</button>
+      </div>
+      <div class="tableWrap maxh">
+        <table>
+          <thead><tr><th>Group</th><th class="right">Amount</th></tr></thead>
+          <tbody id="plBody"></tbody>
+          <tfoot>
+            <tr><th style="padding:10px">Total Income</th><th id="tInc" class="right" style="padding:10px">–</th></tr>
+            <tr><th style="padding:10px">Total Expense</th><th id="tExp" class="right" style="padding:10px">–</th></tr>
+            <tr><th style="padding:10px">Surplus / (Deficit)</th><th id="tSur" class="right" style="padding:10px">–</th></tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+    <div class="gutter" id="gutter"></div>
+
+    <div class="card" style="border:0;border-left:1px solid var(--border);border-radius:0 14px 14px 0">
+      <div class="row" style="justify-content:space-between;margin-bottom:8px">
+        <h3 style="margin:0">Balance Sheet</h3>
+        <button id="openOb" class="btn hidden">Opening Balances</button>
+      </div>
+      <div class="row" style="gap:16px;align-items:flex-start">
+        <div class="w100" style="max-width:50%">
+          <h4 style="margin:0 0 6px">Assets</h4>
+          <div class="tableWrap maxh"><table><tbody id="bsA"></tbody></table></div>
+        </div>
+        <div class="w100" style="max-width:50%">
+          <h4 style="margin:0 0 6px">Liabilities & Equity</h4>
+          <div class="tableWrap maxh"><table><tbody id="bsL"></tbody></table></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr style="border:none;border-top:1px solid var(--border);margin:16px 0" />
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between">
+      <div class="row">
+        <h3 style="margin:0">Transactions</h3>
+        <input id="q" placeholder="Quick search…" style="min-width:260px;margin-left:10px">
+      </div>
+      <div class="row">
+        <button id="openTx" class="btn primary hidden">+ Add Transaction</button>
+      </div>
+    </div>
+
+    <div class="tableWrap" style="margin-top:10px;max-height:420px">
+      <table>
+        <thead>
+          <tr>
+            <th>Serial</th><th>Date</th><th>Type</th><th>Category</th><th>Sub-category</th>
+            <th class="right">Amount</th><th>Dr</th><th>Cr</th><th>Party</th><th>Notes</th>
+            <th>Cost Center</th><th>Mode</th><th>Ref</th><th>Cleared</th><th>Attachment</th><th class="actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="txBody"></tbody>
+      </table>
+    </div>
+
+    <div class="row" style="margin-top:10px">
+      <button id="prev" class="btn">Prev</button>
+      <span id="page" class="muted">Page 1 / 1</span>
+      <button id="next" class="btn">Next</button>
+      <span id="count" class="muted" style="margin-left:auto"></span>
+    </div>
+  </div>
+
+  <!-- Drawers (closed by default) -->
+  <div id="txDrawer" class="drawer">
+    <h3>Add Transaction</h3>
+    <input type="hidden" id="m_serial">
+    <div class="row" style="flex-wrap:wrap">
+      <label>Date <input id="m_date" type="date"></label>
+      <label>Type
+        <select id="m_type"><option>Income</option><option>Expense</option></select>
+      </label>
+      <label>Category <input id="m_category" placeholder="e.g., Maintenance/Utilities"></label>
+      <label>Sub-category <input id="m_sub" placeholder="e.g., Common Maintenance/Lift AMC"></label>
+      <label>Amount <input id="m_amount" type="number" step="0.01" min="0"></label>
+      <label>Account (Dr) <input id="m_dr" placeholder="e.g., Bank"></label>
+      <label>Account (Cr) <input id="m_cr" placeholder="e.g., Income:Maintenance"></label>
+      <label>Party <input id="m_party"></label>
+      <label>Mode <input id="m_mode" placeholder="Bank/Cash/UPI"></label>
+      <label>Ref <input id="m_ref"></label>
+      <label class="w100">Notes <input id="m_notes" class="w100"></label>
+      <label>Cost Center <input id="m_cc"></label>
+      <label>Cleared
+        <select id="m_cleared"><option value="true">Yes</option><option value="false">No</option></select>
+      </label>
+      <div class="row" style="gap:8px;width:100%">
+        <button id="m_browse" class="btn">Attach file…</button>
+        <span id="m_att" class="muted">(none)</span>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" onclick="closeTx()">Cancel</button>
+      <button id="m_save" class="btn primary">Save</button>
+      <span id="m_status" class="muted" style="margin-left:auto"></span>
+    </div>
+    <input id="m_file" type="file" style="display:none">
+  </div>
+
+  <div id="coaDrawer" class="drawer">
+    <h3>Manage Chart of Accounts</h3>
+    <div class="row">
+      <label>Statement
+        <select id="coa_stmt"><option>BS</option><option>PL</option></select>
+      </label>
+      <label>Group
+        <select id="coa_group"><option>Asset</option><option>Liability</option><option>Equity</option><option>Income</option><option>Expense</option></select>
+      </label>
+      <label>Account <input id="coa_account" placeholder="e.g., Bank"></label>
+      <button id="coa_add" class="btn primary">Add</button>
+      <span id="coa_status" class="muted"></span>
+    </div>
+    <div class="tableWrap" style="margin-top:10px;max-height:300px">
+      <table>
+        <thead><tr><th>Statement</th><th>Group</th><th>Account</th><th>Actions</th></tr></thead>
+        <tbody id="coa_body"></tbody>
+      </table>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" onclick="closeCoa()">Close</button>
+    </div>
+  </div>
+
+  <div id="obDrawer" class="drawer">
+    <h3>Opening Balances</h3>
+    <div class="row">
+      <label>Account <input id="ob_account" placeholder="e.g., Bank"></label>
+      <label>Balance <input id="ob_balance" type="number" step="0.01"></label>
+      <button id="ob_set" class="btn primary">Save</button>
+      <span id="ob_status" class="muted"></span>
+    </div>
+    <div class="tableWrap" style="margin-top:10px;max-height:300px">
+      <table>
+        <thead><tr><th>Account</th><th class="right">Balance</th><th>Actions</th></tr></thead>
+        <tbody id="ob_body"></tbody>
+      </table>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" onclick="closeOb()">Close</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const API='/api';
+const PAGE=12;
+const token=()=>{ try{return localStorage.getItem('token')}catch{return null} };
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const dd=(d)=>{ if(!d) return ''; const dt=new Date(d);
+  const p=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata',day:'2-digit',month:'2-digit',year:'numeric'}).formatToParts(dt);
+  const g=k=>p.find(x=>x.type===k)?.value||''; return `${g('day')}-${g('month')}-${g('year')}`;
+};
+const toDateInput=(d)=>{ const dt=d?new Date(d):new Date();
+  return new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).format(dt);
+};
+const cur=(n)=>Number(n||0).toLocaleString(undefined,{maximumFractionDigits:0});
+
+let me=null, isAdmin=false;
+let rows=[], view=[], page=1;
+
+/* ---------- API ---------- */
+async function whoami(){
+  const r=await fetch(`${API}?action=whoami&token=${encodeURIComponent(token()||'')}`,{cache:'no-store'});
+  const j=await r.json(); if(!j.ok) throw new Error('unauthorized'); return j.data.user;
+}
+async function fetchPL(from,to){
+  const r=await fetch(`${API}?action=pl&token=${encodeURIComponent(token()||'')}&from=${encodeURIComponent(from||'')}&to=${encodeURIComponent(to||'')}`,{cache:'no-store'});
+  const j=await r.json(); if(!j.ok) throw new Error(j.error||'PL failed'); return j.data;
+}
+async function fetchBS(asof){
+  const r=await fetch(`${API}?action=balancesheet&token=${encodeURIComponent(token()||'')}&asof=${encodeURIComponent(asof||'')}`,{cache:'no-store'});
+  const j=await r.json(); if(!j.ok) throw new Error(j.error||'BS failed'); return j.data;
+}
+async function fetchTx(from,to){
+  const r=await fetch(`${API}?action=txlist&token=${encodeURIComponent(token()||'')}&from=${encodeURIComponent(from||'')}&to=${encodeURIComponent(to||'')}`,{cache:'no-store'});
+  const j=await r.json(); if(!j.ok) throw new Error(j.error||'Tx failed'); return j.data||[];
+}
+/* COA */
+async function fetchCOA(){
+  const r=await fetch(`${API}?action=coa&token=${encodeURIComponent(token()||'')}`,{cache:'no-store'});
+  const j=await r.json(); if(!j.ok) throw new Error(j.error||'COA failed'); return j.data||[];
+}
+async function addCOA(stmt, group, account){
+  const r=await fetch(`${API}?action=addcoa&token=${encodeURIComponent(token()||'')}`,{
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({statement:stmt, group, account})
+  });
+  const j=await r.json(); if(!j.ok) throw new Error(j.error||'Add COA failed'); return j.data;
+}
+async function delCOA(account){
+  const r=await fetch(`${API}?action=delcoa&token=${encodeURIComponent(token()||'')}`,{
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({account})
+  });
+  const j=await r.json(); if(!j.ok) throw new Error(j.error||'Del COA failed'); return j.data;
+}
+/* OB */
+async function fetchOB(){
+  const r=await fetch(`${API}?action=ob&token=${encodeURIComponent(token()||'')}`,{cache:'no-store'});
+  const j=await r.json(); if(!j.ok) throw new Error(j.error||'OB failed'); return j.data||[];
+}
+async function setOB(account,balance){
+  const r=await fetch(`${API}?action=setob&token=${encodeURIComponent(token()||'')}`,{
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({account, balance})
+  });
+  const j=await r.json(); if(!j.ok) throw new Error(j.error||'Set OB failed'); return j.data;
+}
+async function delOB(account){
+  const r=await fetch(`${API}?action=delob&token=${encodeURIComponent(token()||'')}`,{
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({account})
+  });
+  const j=await r.json(); if(!j.ok) throw new Error(j.error||'Del OB failed'); return j.data;
+}
+
+/* ---------- helpers ---------- */
+function attBadge(val){
+  // Accept comma/semicolon/space separated lists. Show the first usable URL.
+  const placeholders = new Set(['(none)', '-', 'none', 'na', 'n/a']);
+  const raw = String(val==null ? '' : val).trim();
+
+  const first = raw
+    .split(/[,;\s]+/)                // commas, semicolons, or whitespace
+    .map(s => s.trim().replace(/^["'()]+|["'()]+$/g,'')) // strip quotes/brackets
+    .find(s => s && !placeholders.has(s.toLowerCase()));
+
+  if(!first) return '';
+
+  let url = first;
+
+  // Allow absolute http(s), protocol-relative, site-relative, and 'www.' URLs
+  if (/^https?:\/\//i.test(url)) {
+    // ok as-is
+  } else if (/^\/\//.test(url)) {
+    url = 'https:' + url;           // protocol-relative → https
+  } else if (/^\//.test(url)) {
+    // site-relative path (keep as-is)
+  } else if (/^www\./i.test(url)) {
+    url = 'https://' + url;         // prefix bare domains
+  } else {
+    return '';                      // anything else is probably not a URL
+  }
+
+  return `<a class="badge" href="${esc(url)}" target="_blank" rel="noopener">open</a>`;
+}
+
+
+/* ---------- UI fill ---------- */
+function fillPL(data){
+  const tb=document.getElementById('plBody'); tb.innerHTML='';
+  Object.entries(data.income||{}).forEach(([k,v])=>{
+    const tr=document.createElement('tr'); tr.innerHTML=`<td>${esc(k)}</td><td class="right">${cur(v)}</td>`; tb.appendChild(tr);
+  });
+  Object.entries(data.expense||{}).forEach(([k,v])=>{
+    const tr=document.createElement('tr'); tr.innerHTML=`<td>${esc(k)}</td><td class="right">-${cur(v)}</td>`; tb.appendChild(tr);
+  });
+  document.getElementById('tInc').textContent=cur(data.totalIncome||0);
+  document.getElementById('tExp').textContent=cur(data.totalExpense||0);
+  document.getElementById('tSur').textContent=cur(data.surplus||0);
+}
+function fillBS(data){
+  const A=document.getElementById('bsA'), L=document.getElementById('bsL');
+  A.innerHTML=''; L.innerHTML='';
+  Object.entries(data.assets||{}).forEach(([k,v])=>{
+    const tr=document.createElement('tr'); tr.innerHTML=`<td>${esc(k)}</td><td class="right">${cur(v)}</td>`; A.appendChild(tr);
+  });
+  const le={...(data.liabilities||{}), ...(data.equity||{})};
+  Object.entries(le).forEach(([k,v])=>{
+    const tr=document.createElement('tr'); tr.innerHTML=`<td>${esc(k)}</td><td class="right">${cur(v)}</td>`; L.appendChild(tr);
+  });
+}
+function filterAndRender(){
+  const q=(document.getElementById('q').value||'').toLowerCase();
+  view = rows.filter(r=>{
+    const hay = (r.serial+' '+r.date+' '+r.type+' '+r.category+' '+r.subCategory+' '+r.amount+' '+r.accountDr+' '+r.accountCr+' '+r.party+' '+r.notes+' '+r.mode+' '+r.ref+' '+r.attachments).toLowerCase();
+    return hay.includes(q);
+  });
+  page=1; renderTable();
+}
+function renderTable(){
+  const body=document.getElementById('txBody'); body.innerHTML='';
+  const total=view.length, pages=Math.max(1,Math.ceil(total/PAGE));
+  page=Math.min(Math.max(1,page),pages);
+  const part=view.slice((page-1)*PAGE,(page-1)*PAGE+PAGE);
+  part.forEach(r=>{
+    const tr=document.createElement('tr');
+    const att = attBadge(r.attachments);
+    tr.innerHTML=`
+      <td>${esc(r.serial)}</td>
+      <td>${esc(r.date)}</td>
+      <td>${esc(r.type)}</td>
+      <td>${esc(r.category)}</td>
+      <td>${esc(r.subCategory)}</td>
+      <td class="right">${cur(r.amount)}</td>
+      <td>${esc(r.accountDr)}</td>
+      <td>${esc(r.accountCr)}</td>
+      <td>${esc(r.party)}</td>
+      <td>${esc(r.notes)}</td>
+      <td>${esc(r.costCenter||'')}</td>
+      <td>${esc(r.mode)}</td>
+      <td>${esc(r.ref||'')}</td>
+      <td>${r.cleared? 'Yes':'No'}</td>
+      <td>${att}</td>
+      <td class="actions">${isAdmin? `<button class="btn" onclick="openTx(true, ${r.serial})">Edit</button>
+                      <button class="btn danger" onclick="delTx(${r.serial})">Delete</button>`:''}</td>`;
+    body.appendChild(tr);
+  });
+  document.getElementById('page').textContent=`Page ${page} / ${pages}`;
+  document.getElementById('count').textContent=`${total} record(s), showing ${part.length}`;
+}
+
+/* ---------- Run ---------- */
+async function run(){
+  const from=document.getElementById('from').value;
+  const to=document.getElementById('to').value;
+  const asof=document.getElementById('asof').value || to || from;
+  document.getElementById('status').textContent='Loading…';
+  const [pl, bs, tx] = await Promise.all([fetchPL(from,to), fetchBS(asof), fetchTx(from,to)]);
+  fillPL(pl); fillBS(bs);
+  rows = tx; filterAndRender();
+  document.getElementById('status').textContent='Done';
+}
+
+/* ---------- Drawers ---------- */
+function openTx(edit=false, serial=null){
+  const d=document.getElementById('txDrawer'); d.classList.add('open');
+  document.getElementById('m_status').textContent='';
+  if(edit){
+    const r=rows.find(x=>x.serial==serial);
+    document.getElementById('m_serial').value = r.serial;
+    document.getElementById('m_date').value = toDateInput(r.date.split('-').reverse().join('-'));
+    document.getElementById('m_type').value = r.type;
+    document.getElementById('m_category').value = r.category;
+    document.getElementById('m_sub').value = r.subCategory||'';
+    document.getElementById('m_amount').value = r.amount;
+    document.getElementById('m_dr').value = r.accountDr;
+    document.getElementById('m_cr').value = r.accountCr;
+    document.getElementById('m_party').value = r.party;
+    document.getElementById('m_notes').value = r.notes;
+    document.getElementById('m_cc').value = r.costCenter||'';
+    document.getElementById('m_mode').value = r.mode||'';
+    document.getElementById('m_ref').value = r.ref||'';
+    document.getElementById('m_cleared').value = r.cleared? 'true':'false';
+    document.getElementById('m_att').textContent = r.attachments||'(none)';
+  }else{
+    document.getElementById('m_serial').value = '';
+    document.getElementById('m_date').value = toDateInput();
+    ['m_type','m_category','m_sub','m_amount','m_dr','m_cr','m_party','m_notes','m_cc','m_mode','m_ref'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('m_cleared').value='true';
+    document.getElementById('m_att').textContent='(none)';
+  }
+}
+function closeTx(){ document.getElementById('txDrawer').classList.remove('open'); }
+
+function openCoa(){ const d=document.getElementById('coaDrawer'); d.classList.add('open'); loadCOA(); }
+function closeCoa(){ document.getElementById('coaDrawer').classList.remove('open'); }
+async function loadCOA(){
+  const body=document.getElementById('coa_body'); body.innerHTML='<tr><td colspan="4" class="muted">Loading…</td></tr>';
+  const list = await fetchCOA();
+  body.innerHTML='';
+  list.forEach(r=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${esc(r.statement)}</td><td>${esc(r.group)}</td><td>${esc(r.account)}</td>
+                    <td><button class="btn danger" onclick="delCOAItem('${esc(r.account)}')">Delete</button></td>`;
+    body.appendChild(tr);
+  });
+}
+async function addCOAItem(){
+  const s=document.getElementById('coa_status');
+  const stmt=document.getElementById('coa_stmt').value;
+  const group=document.getElementById('coa_group').value;
+  const account=document.getElementById('coa_account').value.trim();
+  if(!account){ s.textContent='Account required'; return; }
+  s.textContent='Saving…';
+  try{ await addCOA(stmt,group,account); s.textContent='Added'; document.getElementById('coa_account').value=''; await loadCOA(); }
+  catch(e){ s.textContent='Failed: '+e.message; }
+}
+async function delCOAItem(account){
+  if(!confirm('Delete account "'+account+'"?')) return;
+  const s=document.getElementById('coa_status'); s.textContent='Deleting…';
+  try{ await delCOA(account); s.textContent='Deleted'; await loadCOA(); }
+  catch(e){ s.textContent='Failed: '+e.message; }
+}
+
+function openOb(){ const d=document.getElementById('obDrawer'); d.classList.add('open'); loadOB(); }
+function closeOb(){ document.getElementById('obDrawer').classList.remove('open'); }
+async function loadOB(){
+  const body=document.getElementById('ob_body'); body.innerHTML='<tr><td colspan="3" class="muted">Loading…</td></tr>';
+  const list = await fetchOB();
+  body.innerHTML='';
+  list.forEach(r=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML = `<td>${esc(r.account)}</td><td class="right">${cur(r.balance)}</td>
+                    <td><button class="btn danger" onclick="delOBItem('${esc(r.account)}')">Delete</button></td>`;
+    body.appendChild(tr);
+  });
+}
+async function saveOBItem(){
+  const s=document.getElementById('ob_status');
+  const account=document.getElementById('ob_account').value.trim();
+  const balance=Number(document.getElementById('ob_balance').value||0);
+  if(!account){ s.textContent='Account required'; return; }
+  s.textContent='Saving…';
+  try{ await setOB(account,balance); s.textContent='Saved'; document.getElementById('ob_account').value=''; document.getElementById('ob_balance').value=''; await loadOB(); }
+  catch(e){ s.textContent='Failed: '+e.message; }
+}
+async function delOBItem(account){
+  if(!confirm('Delete opening balance for "'+account+'"?')) return;
+  const s=document.getElementById('ob_status'); s.textContent='Deleting…';
+  try{ await delOB(account); s.textContent='Deleted'; await loadOB(); }
+  catch(e){ s.textContent='Failed: '+e.message; }
+}
+
+/* TX actions */
+document.getElementById('m_browse').onclick=()=>document.getElementById('m_file').click();
+document.getElementById('m_file').addEventListener('change',ev=>uploadFile(ev.target.files[0]));
+document.getElementById('m_save').onclick=saveModal;
+async function saveModal(){
+  const s=document.getElementById('m_status');
+  const payload = {
+    serial: document.getElementById('m_serial').value||undefined,
+    date: dd(document.getElementById('m_date').value),
+    type: document.getElementById('m_type').value,
+    category: document.getElementById('m_category').value.trim(),
+    subCategory: document.getElementById('m_sub').value.trim(),
+    amount: document.getElementById('m_amount').value,
+    accountDr: document.getElementById('m_dr').value.trim(),
+    accountCr: document.getElementById('m_cr').value.trim(),
+    party: document.getElementById('m_party').value.trim(),
+    notes: document.getElementById('m_notes').value.trim(),
+    costCenter: document.getElementById('m_cc').value.trim(),
+    mode: document.getElementById('m_mode').value.trim(),
+    ref: document.getElementById('m_ref').value.trim(),
+    cleared: document.getElementById('m_cleared').value==='true',
+    attachments: (document.getElementById('m_att').textContent||'').trim()
+  };
+  if(!payload.type || !payload.category || !payload.amount || !payload.accountDr || !payload.accountCr){
+    s.textContent='Type, Category, Amount, Dr and Cr are required'; return;
+  }
+  s.textContent='Saving…';
+  try{
+    const action = payload.serial? 'updatetx':'addtx';
+    const r=await fetch(`${API}?action=${action}&token=${encodeURIComponent(token()||'')}`,{
+      method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)
+    });
+    const j=await r.json(); if(!j.ok) throw new Error(j.error||'Failed');
+    s.textContent='Saved'; closeTx(); await run();
+  }catch(e){ s.textContent='Save failed: '+e.message; }
+}
+async function delTx(serial){
+  if(!confirm('Delete transaction #'+serial+'?')) return;
+  const r=await fetch(`${API}?action=deltx&token=${encodeURIComponent(token()||'')}`,{
+    method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({serial})
+  });
+  const j=await r.json(); if(!j.ok){ alert('Delete failed: '+(j.error||'Failed')); return; }
+  await run();
+}
+async function uploadFile(file){
+  if(!file) return;
+  const st=document.getElementById('m_status'); st.textContent='Uploading…';
+  const b64 = await file.arrayBuffer().then(b=>btoa(String.fromCharCode(...new Uint8Array(b))));
+  try{
+    const r=await fetch(`${API}?action=uploaddocb64&token=${encodeURIComponent(token()||'')}`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:file.name, mime:file.type||'application/octet-stream', data:b64})
+    });
+    const j=await r.json(); if(!j.ok) throw new Error(j.error||'failed');
+    const curA = document.getElementById('m_att').textContent.trim();
+    document.getElementById('m_att').textContent = curA && curA!=='(none)' ? (curA+','+j.data.url) : j.data.url;
+    st.textContent='Uploaded';
+  }catch(e){ st.textContent='Upload failed: '+e.message; }
+}
+
+/* events */
+document.getElementById('run').onclick=()=>run();
+document.getElementById('q').addEventListener('input',filterAndRender);
+document.getElementById('prev').onclick=()=>{ page=Math.max(1,page-1); renderTable(); };
+document.getElementById('next').onclick=()=>{ page=page+1; renderTable(); };
+
+document.getElementById('openTx').onclick=()=>openTx(false);
+document.getElementById('openCoa').onclick=openCoa;
+document.getElementById('openOb').onclick=openOb;
+
+document.getElementById('coa_add').onclick=addCOAItem;
+document.getElementById('ob_set').onclick=saveOBItem;
+
+/* draggable split */
+(function(){
+  const gutter=document.getElementById('gutter');
+  const parent=gutter.parentElement;
+  let down=false,startX=0,left=0;
+  gutter.addEventListener('mousedown',e=>{down=true;startX=e.clientX;left=parent.getBoundingClientRect().left;document.body.style.userSelect='none';});
+  window.addEventListener('mouseup',()=>{down=false;document.body.style.userSelect='';});
+  window.addEventListener('mousemove',e=>{
+    if(!down) return;
+    const rect=parent.getBoundingClientRect();
+    const x=e.clientX-left;
+    const pct=Math.min(90,Math.max(10,(x/rect.width)*100));
+    parent.style.gridTemplateColumns=`${pct}% 8px ${100-pct}%`;
+  });
+})();
+
+/* init */
+(async function(){
+  try{
+    me=await whoami(); isAdmin=(me.role==='admin');
+    // Toggle add/manage buttons
+    if(isAdmin){
+      document.getElementById('openTx').classList.remove('hidden');
+      document.getElementById('openCoa').classList.remove('hidden');
+      document.getElementById('openOb').classList.remove('hidden');
+      document.body.classList.remove('no-admin');
+    }else{
+      document.body.classList.add('no-admin'); // hides Actions column completely
+    }
+  }catch{ location.replace('/login'); return; }
+  const now=new Date();
+  const start=new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0,10);
+  const end=new Date(now.getFullYear(), now.getMonth()+1, 0).toISOString().slice(0,10);
+  document.getElementById('from').value=start;
+  document.getElementById('to').value=end;
+  document.getElementById('asof').value=end;
+  await run();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Notice Board</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#f7f9fc; --card:#fff; --text:#0f172a; --muted:#6b7280; --border:#e5e7eb; --hover:#f1f5f9;
+      --blue:#0d6efd; --danger:#ef4444;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial;color:var(--text)}
+    header{
+      position:sticky;top:0;z-index:5;
+      display:flex;align-items:center;justify-content:space-between;gap:12px;
+      padding:12px 16px;background:var(--bg);border-bottom:1px solid var(--border)
+    }
+    .brand{display:flex;align-items:center;gap:10px}
+    .brand img{height:28px;width:28px;border-radius:6px;object-fit:cover}
+    .title{margin:0;font-weight:800}
+    .btn{appearance:none;border:1px solid var(--border);background:var(--card);padding:8px 10px;border-radius:10px;cursor:pointer}
+    .btn:hover{background:var(--hover)}
+    .btn.primary{background:var(--blue);color:#fff;border-color:transparent}
+    .btn.danger{background:#ef4444;color:#fff;border-color:transparent}
+    input,textarea,select{padding:8px 10px;border:1px solid var(--border);border-radius:10px;font-family:inherit}
+    textarea{resize:vertical;min-height:120px}
+
+    .wrap{padding:14px 16px}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px}
+    .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    .muted{color:var(--muted)}
+    .hidden{display:none}
+
+    .chips{display:flex;gap:8px;flex-wrap:wrap}
+    .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:999px;padding:4px 8px;background:#f8fafc}
+    .chip .x{cursor:pointer;border:0;background:transparent;color:#334155;font-size:14px}
+
+    .tablewrap{
+      overflow:auto; border:1px solid var(--border); border-radius:12px; background:var(--card);
+      max-height:70vh;
+    }
+    table{width:100%;border-collapse:separate;border-spacing:0;table-layout:fixed}
+    col.c-serial{width:90px}
+    col.c-date{width:160px}
+    col.c-subject{width:260px}
+    col.c-body{width:auto}
+    col.c-link{width:220px}
+    col.c-view{width:90px}
+    col.c-actions{width:140px}
+
+    thead th{
+      position:sticky; top:0; z-index:2;
+      background:var(--card);
+      border-bottom:1px solid var(--border);
+      padding:10px; text-align:left; font-weight:700; white-space:nowrap;
+    }
+    tbody td{border-top:1px solid var(--border);padding:10px;vertical-align:top;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+    th.sort{cursor:pointer;user-select:none}
+    th.sort:after{content:" ⇵";color:#94a3b8;font-weight:400}
+    th.sort.asc:after{content:" ↑";} th.sort.desc:after{content:" ↓";}
+
+    .thumb{width:58px;height:44px;object-fit:cover;border-radius:5px;border:1px solid #e5e7eb;background:#f8fafc}
+    .fileicon{display:inline-flex;align-items:center;gap:6px;padding:3px 6px;border:1px solid #e5e7eb;border-radius:6px;color:#334155;background:#f8fafc;font-size:12px;white-space:nowrap}
+    .fileicon svg{width:14px;height:14px}
+    .linkbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+
+    .modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:50;align-items:center;justify-content:center}
+    .modal .box{background:#fff;border-radius:12px;border:1px solid var(--border);padding:16px;width:min(820px,94vw)}
+    .box h3{margin:6px 0 12px}
+
+    /* Hide Actions column (header + cells + col) when table has .no-actions */
+    table.no-actions col.c-actions{display:none}
+    table.no-actions th.th-actions{display:none}
+    table.no-actions td.td-actions{display:none}
+  </style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <img src="/android-chrome-512x512.png" onerror="this.src='logo.png'" alt="logo">
+    <h1 class="title">Notice Board</h1>
+  </div>
+  <div class="row">
+    <span id="userBadge" class="muted"></span>
+    <button class="btn" onclick="location.href='/'">Back to Dashboard</button>
+    <button class="btn danger" onclick="logout()">Logout</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <!-- Admin compose -->
+  <div id="adminBar" class="card hidden" style="margin-bottom:12px">
+    <h3 style="margin:0 0 8px">Post a Notice (admins only)</h3>
+    <div class="row">
+      <input id="n_subject" placeholder="Subject" style="flex:2 1 260px">
+      <input id="n_date" type="date" style="flex:1 1 160px">
+      <button id="n_attach" class="btn">Attach</button>
+      <input id="n_file" type="file" class="hidden" multiple>
+      <span id="n_status" class="muted"></span>
+    </div>
+    <div class="row" style="margin-top:8px; align-items:flex-start">
+      <textarea id="n_body" placeholder="Write the notice..." style="flex:1 1 520px"></textarea>
+      <div style="flex:1 1 260px">
+        <div class="muted" style="margin-bottom:6px">Attachments</div>
+        <div id="n_attach_list" class="chips"></div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <button id="n_post" class="btn primary">Post Notice</button>
+    </div>
+  </div>
+
+  <!-- Grid -->
+  <div class="card">
+    <div class="row" style="margin-bottom:8px">
+      <input id="q" type="search" placeholder="Quick search…" style="min-width:260px">
+      <span id="meta" class="muted">Timezone: IST • Dates: DD-MM-YYYY</span>
+      <span id="status" class="muted" style="margin-left:auto"></span>
+    </div>
+
+    <div class="tablewrap">
+      <table id="grid">
+        <colgroup>
+          <col class="c-serial" />
+          <col class="c-date" />
+          <col class="c-subject" />
+          <col class="c-body" />
+          <col class="c-link" />
+          <col class="c-view" />
+          <col class="c-actions" />
+        </colgroup>
+        <thead id="thead">
+          <tr>
+            <th class="sort" data-k="serial">Serial #</th>
+            <th class="sort" data-k="date">Date</th>
+            <th class="sort" data-k="subject">Subject</th>
+            <th class="sort" data-k="body">Notice</th>
+            <th class="sort" data-k="link">Link(s)</th>
+            <th>View</th>
+            <th class="th-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div id="editModal" class="modal">
+  <div class="box">
+    <h3 id="m_title">Edit Notice</h3>
+    <input type="hidden" id="m_serial">
+    <div class="row">
+      <label style="flex:2 1 260px">Subject <input id="m_subject" style="width:100%"></label>
+      <label>Date <input id="m_date" type="date"></label>
+      <button id="m_attach" class="btn">Attach</button>
+      <input id="m_file" type="file" class="hidden" multiple>
+      <span id="m_status" class="muted"></span>
+    </div>
+    <div class="row" style="margin-top:8px; align-items:flex-start">
+      <label style="flex:1 1 520px">Notice
+        <textarea id="m_body" style="width:100%"></textarea>
+      </label>
+      <div style="flex:1 1 260px">
+        <div class="muted" style="margin-bottom:6px">Attachments</div>
+        <div id="m_attach_list" class="chips"></div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button id="m_save" class="btn primary">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- View Modal (read-only for everyone) -->
+<div id="viewModal" class="modal">
+  <div class="box" style="max-width:900px">
+    <div class="row" style="justify-content:space-between;align-items:flex-start">
+      <h3 id="v_subject" style="margin:0">Subject</h3>
+      <button class="btn" onclick="closeView()">Close</button>
+    </div>
+    <div class="muted" id="v_meta" style="margin:6px 0 12px"></div>
+    <div id="v_body" style="white-space:pre-wrap"></div>
+    <div id="v_links" class="linkbar" style="margin-top:12px"></div>
+  </div>
+</div>
+
+<script>
+/* ==== CONFIG ==== */
+const API = '/api';
+const IST = 'Asia/Kolkata';
+
+/* ==== session/utils ==== */
+function logout(){ try{localStorage.clear()}catch{} location.replace('/login'); }
+function token(){ try{return localStorage.getItem('token')}catch{ return null; } }
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+
+/* dates */
+function fmtDateIST(d){
+  if(!d) return '';
+  const dt = new Date(d);
+  if(isNaN(dt)) return esc(d);
+  const p = new Intl.DateTimeFormat('en-GB',{timeZone:IST,day:'2-digit',month:'2-digit',year:'numeric'}).formatToParts(dt);
+  const g=k=>p.find(x=>x.type===k)?.value||''; return `${g('day')}-${g('month')}-${g('year')}`;
+}
+function toDateInputValueIST(d){
+  const dt = d? new Date(d) : new Date();
+  return new Intl.DateTimeFormat('en-CA',{timeZone:IST,year:'numeric',month:'2-digit',day:'2-digit'}).format(dt);
+}
+
+/* urls */
+function extractUrls(s){
+  if(!s) return [];
+  const urls = [];
+  const re = /https?:\/\/[^\s)>\]]+/ig;
+  let m; while((m=re.exec(s))!==null){ urls.push(m[0].replace(/[),.;]+$/,'')); }
+  return urls;
+}
+function removeUrlFromText(s,url){
+  if(!s || !url) return s||'';
+  return s.replace(new RegExp(`\\s*(?:Attachment:\\s*)?${url.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}`,'ig'), '').trim();
+}
+function removeUrls(text, urls){ return urls.reduce((acc,u)=>removeUrlFromText(acc,u), text||''); }
+function stripAttachmentLabels(s){ return String(s||'').replace(/Attachment:\s*/ig,'').trim(); }
+
+/* thumbs + icons */
+function gdriveId(url){ const m=/\/d\/([a-zA-Z0-9_-]{10,})\//.exec(url)||/id=([a-zA-Z0-9_-]{10,})/.exec(url); return m?m[1]:null; }
+function driveThumb(url){ const id=gdriveId(url); return id?`https://drive.google.com/thumbnail?authuser=0&sz=w200&id=${id}`:null; }
+function icon(kind,label){
+  const svg={
+    pdf:'<svg viewBox="0 0 24 24" fill="none"><path d="M6 2h8l4 4v16H6z" stroke="currentColor"/><text x="6" y="14" font-size="8" fill="currentColor">PDF</text></svg>',
+    doc:'<svg viewBox="0 0 24 24" fill="none"><path d="M6 2h8l4 4v16H6z" stroke="currentColor"/><text x="6" y="14" font-size="8" fill="currentColor">DOC</text></svg>',
+    xls:'<svg viewBox="0 0 24 24" fill="none"><path d="M6 2h8l4 4v16H6z" stroke="currentColor"/><text x="6" y="14" font-size="8" fill="currentColor">XLS</text></svg>',
+    ppt:'<svg viewBox="0 0 24 24" fill="none"><path d="M6 2h8l4 4v16H6z" stroke="currentColor"/><text x="6" y="14" font-size="8" fill="currentColor">PPT</text></svg>',
+    csv:'<svg viewBox="0 0 24 24" fill="none"><path d="M6 2h8l4 4v16H6z" stroke="currentColor"/><text x="6" y="14" font-size="8" fill="currentColor">CSV</text></svg>',
+    zip:'<svg viewBox="0 0 24 24" fill="none"><rect x="5" y="2" width="14" height="20" rx="2" stroke="currentColor"/><path d="M12 4v14" stroke="currentColor" /><path d="M10 6h4M10 8h4M10 10h4" stroke="currentColor"/></svg>'
+  }[kind]||'';
+  return `<span class="fileicon">${svg}<span>${esc(label||kind)}</span></span>`;
+}
+function mediaIconOrThumb(url){
+  const l=(url||'').toLowerCase(); const th=driveThumb(url);
+  if(/\.(png|jpg|jpeg|gif|webp)$/i.test(l) || th){
+    const src = /\.(png|jpg|jpeg|gif|webp)$/i.test(l)?url:th;
+    return `<a href="${esc(url)}" target="_blank" title="${esc(url)}"><img class="thumb" src="${esc(src)}" alt=""></a>`;
+  }
+  if(/\.pdf($|\?)/i.test(l))  return `<a href="${esc(url)}" target="_blank" title="${esc(url)}">${icon('pdf','PDF')}</a>`;
+  if(/\.(doc|docx)($|\?)/i.test(l)) return `<a href="${esc(url)}" target="_blank" title="${esc(url)}">${icon('doc','DOC')}</a>`;
+  if(/\.(xls|xlsx)($|\?)/i.test(l)) return `<a href="${esc(url)}" target="_blank" title="${esc(url)}">${icon('xls','XLS')}</a>`;
+  if(/\.(ppt|pptx)($|\?)/i.test(l)) return `<a href="${esc(url)}" target="_blank" title="${esc(url)}">${icon('ppt','PPT')}</a>`;
+  if(/\.csv($|\?)/i.test(l))  return `<a href="${esc(url)}" target="_blank" title="${esc(url)}">${icon('csv','CSV')}</a>`;
+  if(/\.zip($|\?)/i.test(l))  return `<a href="${esc(url)}" target="_blank" title="${esc(url)}">${icon('zip','ZIP')}</a>`;
+  return `<a href="${esc(url)}" target="_blank" class="fileicon" title="${esc(url)}">link</a>`;
+}
+
+/* state */
+let isAdmin=false, all=[], rows=[], sortKey='date', sortDir='desc';
+
+/* render + filtering */
+function apply(){
+  const q=(document.getElementById('q').value||'').toLowerCase();
+  rows = all.filter(r=>{
+    const urls = extractUrls(r.body);
+    const bodyClean = stripAttachmentLabels(removeUrls(r.body, urls));
+    const hay=(r.serial+' '+fmtDateIST(r.date)+' '+r.subject+' '+bodyClean+' '+urls.join(' ')).toLowerCase();
+    return !q || hay.includes(q);
+  }).sort((a,b)=>{
+    let A,B;
+    if(sortKey==='date'){ A=new Date(a.date||0); B=new Date(b.date||0); }
+    else if(sortKey==='link'){ A=(extractUrls(a.body).join(' ')||'').toLowerCase(); B=(extractUrls(b.body).join(' ')||'').toLowerCase(); }
+    else { A=(a[sortKey]??'').toString().toLowerCase(); B=(b[sortKey]??'').toString().toLowerCase(); }
+    const s=(A<B?-1:A>B?1:0); return sortDir==='asc'?s:-s;
+  });
+  render();
+}
+function render(){
+  const tbody=document.querySelector('#grid tbody'); tbody.innerHTML='';
+  rows.forEach(r=>{
+    const urls = extractUrls(r.body);
+    const bodyClean = stripAttachmentLabels(removeUrls(r.body, urls));
+    const tr=document.createElement('tr');
+    tr.innerHTML = `
+      <td>${esc(r.serial)}</td>
+      <td>${fmtDateIST(r.date)}</td>
+      <td title="${esc(r.subject)}">${esc(r.subject)}</td>
+      <td title="${esc(bodyClean)}" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(bodyClean)}</td>
+      <td><div class="linkbar">${urls.map(u=>mediaIconOrThumb(u)).join('')}</div></td>
+      <td><button class="btn" onclick="viewNotice(${r.serial})">View</button></td>
+      <td class="td-actions">
+        ${isAdmin? `
+          <button class="btn" onclick="openModal(${r.serial})">Edit</button>
+          <button class="btn danger" onclick="delNotice(${r.serial})">Delete</button>
+        `:''}
+      </td>`;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('status').textContent = `Loaded ${rows.length} notice(s)`;
+}
+
+/* api */
+async function whoami(){
+  const r=await fetch(`${API}?action=whoami&token=${encodeURIComponent(token())}`,{cache:'no-store'});
+  const j=await r.json(); if(!j.ok) throw new Error('unauthorized');
+  return j.data.user;
+}
+async function fetchNotices(){
+  document.getElementById('status').textContent='Loading…';
+  const r=await fetch(`${API}?action=notices&token=${encodeURIComponent(token())}`,{cache:'no-store'});
+  const j=await r.json(); if(!j.ok) throw new Error(j.error||'Failed');
+  all=(j.data||[]).slice().sort((a,b)=>{
+    const ad=new Date(a.date||0).getTime(), bd=new Date(b.date||0).getTime();
+    if(ad!==bd) return bd-ad;
+    return (b.serial||0)-(a.serial||0);
+  });
+  apply();
+}
+
+/* upload (multi) */
+async function uploadMany(files, statusEl, appendToTextarea){
+  if(!files || !files.length) return;
+  statusEl.textContent='Uploading…';
+  for(const file of files){
+    const b64=await file.arrayBuffer().then(b=>btoa(String.fromCharCode(...new Uint8Array(b))));
+    try{
+      const r=await fetch(`${API}?action=uploaddocb64&token=${encodeURIComponent(token())}`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({name:file.name,mime:file.type||'application/octet-stream',data:b64})
+      });
+      const j=await r.json(); if(!j.ok) throw new Error(j.error||'Failed');
+      const url=j.data.url;
+      appendToTextarea.value = (appendToTextarea.value? (appendToTextarea.value.replace(/\s+$/,'')+'\n') : '') + `Attachment: ${url}`;
+      refreshAttachChips(appendToTextarea);
+      statusEl.textContent='Uploaded.';
+    }catch(e){ statusEl.textContent='Upload failed: '+e.message; break; }
+  }
+}
+
+/* chips + compose/edit */
+function refreshAttachChips(textarea){
+  const urls = extractUrls(textarea.value);
+  const targetId = (textarea.id==='n_body') ? 'n_attach_list' : 'm_attach_list';
+  const listEl = document.getElementById(targetId);
+  listEl.innerHTML = urls.map(u=>`<span class="chip">${mediaIconOrThumb(u)}<button class="x" data-url="${esc(u)}" title="Remove">✕</button></span>`).join('') || '<span class="muted">No attachments</span>';
+  listEl.querySelectorAll('.x').forEach(btn=>{
+    btn.onclick=()=>{
+      textarea.value = removeUrlFromText(textarea.value, btn.dataset.url);
+      refreshAttachChips(textarea);
+    };
+  });
+}
+
+async function postNotice(){
+  const subject=document.getElementById('n_subject').value.trim();
+  const date=document.getElementById('n_date').value;
+  const body=document.getElementById('n_body').value.trim();
+  const s=document.getElementById('n_status');
+  if(!subject || !body){ s.textContent='Subject and notice are required.'; return; }
+  s.textContent='Posting…';
+  try{
+    const r=await fetch(`${API}?action=addnotice&token=${encodeURIComponent(token())}`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({subject,date,body})
+    });
+    const j=await r.json(); if(!j.ok) throw new Error(j.error||'Failed');
+    document.getElementById('n_subject').value='';
+    document.getElementById('n_body').value='';
+    refreshAttachChips(document.getElementById('n_body'));
+    s.textContent='Posted.';
+    await fetchNotices();
+  }catch(e){ s.textContent='Failed: '+e.message; }
+}
+
+/* edit/delete */
+function openModal(serial){
+  const rec=all.find(x=>x.serial==serial);
+  document.getElementById('m_title').textContent='Edit Notice';
+  document.getElementById('m_serial').value=rec.serial;
+  document.getElementById('m_subject').value=rec.subject||'';
+  document.getElementById('m_date').value=toDateInputValueIST(rec.date);
+  document.getElementById('m_body').value=rec.body||'';
+  refreshAttachChips(document.getElementById('m_body'));
+  document.getElementById('editModal').style.display='flex';
+}
+function closeModal(){ document.getElementById('editModal').style.display='none'; }
+async function saveModal(){
+  const payload={
+    serial: document.getElementById('m_serial').value,
+    subject: document.getElementById('m_subject').value.trim(),
+    date: document.getElementById('m_date').value,
+    body: document.getElementById('m_body').value.trim()
+  };
+  const s=document.getElementById('m_status');
+  if(!payload.subject || !payload.body){ s.textContent='Subject and notice required'; return; }
+  s.textContent='Saving…';
+  try{
+    const r=await fetch(`${API}?action=updatenotice&token=${encodeURIComponent(token())}`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(payload)
+    });
+    const j=await r.json(); if(!j.ok) throw new Error(j.error||'Failed');
+    s.textContent='Saved.'; closeModal(); await fetchNotices();
+  }catch(e){ s.textContent='Save failed: '+e.message; }
+}
+async function delNotice(serial){
+  if(!confirm('Delete notice #'+serial+'?')) return;
+  try{
+    const r=await fetch(`${API}?action=deletenotice&token=${encodeURIComponent(token())}`,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({serial})
+    });
+    const j=await r.json(); if(!j.ok) throw new Error(j.error||'Failed');
+    await fetchNotices();
+  }catch(e){ alert('Delete failed: '+e.message); }
+}
+
+/* View (read-only) */
+function closeView(){ document.getElementById('viewModal').style.display='none'; }
+function viewNotice(serial){
+  const rec = all.find(x=>x.serial==serial);
+  if(!rec) return;
+  const urls = extractUrls(rec.body);
+  const bodyClean = stripAttachmentLabels(removeUrls(rec.body, urls));
+  document.getElementById('v_subject').textContent = rec.subject || '(no subject)';
+  document.getElementById('v_meta').textContent = `Serial #${rec.serial} • ${fmtDateIST(rec.date)}`;
+  document.getElementById('v_body').textContent = bodyClean || '';
+  document.getElementById('v_links').innerHTML =
+    urls.length ? urls.map(u=>mediaIconOrThumb(u)).join('') : '<span class="muted">No attachments</span>';
+  document.getElementById('viewModal').style.display='flex';
+}
+document.addEventListener('click',(e)=>{
+  const vm=document.getElementById('viewModal');
+  if(vm.style.display==='flex' && e.target===vm){ closeView(); }
+});
+
+/* sort + inputs */
+function attachSort(){
+  document.querySelectorAll('#thead th.sort').forEach(th=>{
+    th.addEventListener('click',()=>{
+      const k=th.dataset.k;
+      if(sortKey===k) sortKey=k, sortDir=(sortDir==='asc'?'desc':'asc');
+      else { sortKey=k; sortDir='asc'; }
+      document.querySelectorAll('#thead th.sort').forEach(x=>x.classList.remove('asc','desc'));
+      th.classList.add(sortDir);
+      apply();
+    });
+  });
+}
+function attachInputs(){
+  document.getElementById('q').addEventListener('input', apply);
+
+  // compose
+  document.getElementById('n_attach').onclick=()=>document.getElementById('n_file').click();
+  document.getElementById('n_file').addEventListener('change',ev=>{
+    uploadMany(ev.target.files, document.getElementById('n_status'), document.getElementById('n_body'));
+  });
+  document.getElementById('n_body').addEventListener('input', e=>refreshAttachChips(e.target));
+  document.getElementById('n_post').onclick=postNotice;
+
+  // edit
+  document.getElementById('m_attach').onclick=()=>document.getElementById('m_file').click();
+  document.getElementById('m_file').addEventListener('change',ev=>{
+    uploadMany(ev.target.files, document.getElementById('m_status'), document.getElementById('m_body'));
+  });
+  document.getElementById('m_body').addEventListener('input', e=>refreshAttachChips(e.target));
+  document.getElementById('m_save').onclick=saveModal;
+}
+
+/* init */
+(async function init(){
+  document.getElementById('n_date').value = toDateInputValueIST();
+  try{
+    const me=await whoami();
+    isAdmin = (me.role==='admin');
+    document.getElementById('userBadge').textContent = me.username ? `@${me.username}` : '';
+    if(isAdmin){
+      document.getElementById('adminBar').classList.remove('hidden');
+      document.getElementById('grid').classList.remove('no-actions');
+    }else{
+      // hide Actions column completely
+      document.getElementById('grid').classList.add('no-actions');
+    }
+  }catch{ return logout(); }
+
+  attachInputs(); attachSort();
+  refreshAttachChips(document.getElementById('n_body'));
+  await fetchNotices();
+})();
+</script>
+</body>
+</html>
