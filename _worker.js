@@ -8,41 +8,49 @@ export default {
     // Proxy /api to GAS, preserving method, query, and body
     if (url.pathname === '/api') {
       const upstream = new URL(GAS_API);
-      // Append all query parameters from the client request to the GAS URL
+      
+      // 1. Append all query parameters from the client request to the GAS URL
       for (const [k, v] of url.searchParams.entries()) upstream.searchParams.set(k, v);
 
-      const init = {
-        method: request.method,
-        headers: new Headers(request.headers),
-        redirect: 'manual',
-        // Only include body for POST/PUT/PATCH methods
-        body: (request.method === 'POST' || request.method === 'PUT' || request.method === 'PATCH') ? request.body : undefined
-      };
+      const headers = new Headers(request.headers);
       
-      // CRITICAL FIX: The request body is streamed, so we must remove 
-      // the original Content-Length header to prevent issues with the stream.
-      // This is a common requirement when proxying requests in Cloudflare Workers.
-      if (init.headers.has('Content-Length')) {
-          init.headers.delete('Content-Length');
+      // 2. CRITICAL: Remove Content-Length and Host headers for proxying
+      // Content-Length can cause body stream issues. Host must be the original GAS host.
+      if (headers.has('Content-Length')) {
+          headers.delete('Content-Length');
       }
-      
-      init.headers.set('accept', 'application/json');
+      headers.delete('Host'); // Ensure the Host header is correct for GAS
+
+      // 3. Create a new Request object for the upstream call. This is the most reliable way 
+      //    to correctly handle the streaming body in a worker proxy.
+      const proxyRequest = new Request(upstream.toString(), {
+          method: request.method,
+          headers: headers,
+          redirect: 'manual',
+          body: request.body, // Pass the request body stream directly
+          // Disable keepalive for Cloudflare Pages (best practice)
+          cf: { cacheTtlByStatus: { '200-299': -1, '400-599': 0 } }
+      });
 
       try {
-        const res = await fetch(upstream.toString(), init);
-        return new Response(res.body, { status: res.status, statusText: res.statusText, headers: res.headers });
+        const res = await fetch(proxyRequest);
+        
+        // 4. Return the response back to the client
+        return new Response(res.body, { 
+            status: res.status, 
+            statusText: res.statusText, 
+            headers: res.headers 
+        });
       } catch (e) {
         // Return a 500 status to the client if the upstream fetch fails
-        // This is a clearer error signal than a general 'Network error.'
-        return new Response(JSON.stringify({ ok: false, error: `Proxy failed to connect: ${e.message}` }), {
+        return new Response(JSON.stringify({ ok: false, error: `Proxy failed to connect to GAS: ${e.message}` }), {
           status: 500,
           headers: { 'Content-Type': 'application/json' }
         });
       }
     }
 
-    // Everything else (/, /login, /login/, /login.html, CSS/JS/etc.)
-    // is served by the static asset pipeline (Clean URLs enabled)
+    // Everything else (static assets)
     return env.ASSETS.fetch(request);
   }
 };
