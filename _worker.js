@@ -27,26 +27,29 @@ export default {
       // 1. Append all query parameters from the client request to the GAS URL
       for (const [k, v] of url.searchParams.entries()) upstream.searchParams.set(k, v);
 
-      const headers = new Headers(request.headers);
-      
-      // 2. CRITICAL: Remove headers that can break the proxy request
-      if (headers.has('Content-Length')) {
-          headers.delete('Content-Length');
-      }
-      headers.delete('Host'); // Ensure the Host header is correct for GAS
+      const headers = new Headers(); // Start with a fresh set of headers
 
-      // 3. Create a new Request object for the upstream call to reliably pass the body stream
+      // CRITICAL: ONLY copy required headers for the upstream request
+      if (request.headers.has('content-type')) {
+          headers.set('content-type', request.headers.get('content-type'));
+      }
+      if (request.headers.has('accept')) {
+          headers.set('accept', request.headers.get('accept'));
+      }
+      // Note: We intentionally exclude Host, Content-Length, and all other non-essential headers.
+
+      // 2. Create a new Request object for the upstream call to reliably pass the body stream
       const proxyRequest = new Request(upstream.toString(), {
           method: request.method,
-          headers: headers,
-          redirect: 'follow', // <--- CHANGED: Now follows any 302 redirects internally
+          headers: headers, // Use the clean header set
+          redirect: 'follow', // Follow any 302 redirects internally
           body: request.body, // Pass the request body stream directly
       });
 
       try {
         const res = await fetch(proxyRequest);
         
-        // 4. Pass the response back to the client, adding CORS headers
+        // 3. Pass the response back to the client, adding CORS headers
         return new Response(res.body, { 
             status: res.status, 
             statusText: res.statusText, 
