@@ -18,7 +18,6 @@ export default {
     if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
         
       // 0. Handle CORS Preflight (OPTIONS request)
-      // Browsers send this before a cross-origin POST request.
       if (request.method === 'OPTIONS') {
         return new Response(null, { status: 204, headers: corsHeaders() });
       }
@@ -40,7 +39,7 @@ export default {
       const proxyRequest = new Request(upstream.toString(), {
           method: request.method,
           headers: headers,
-          redirect: 'manual', // Do not follow redirects (GAS sends 302 on success sometimes)
+          redirect: 'follow', // <--- CHANGED: Now follows any 302 redirects internally
           body: request.body, // Pass the request body stream directly
       });
 
